@@ -12,11 +12,11 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 
 class CaptchaController extends AbstractController {
     /**
-     * @Route("/", name="index", methods={"GET","POST"})
+     * @Route("/{id}", name="index", methods={"GET","POST"})
      * @param Request $request
      * @return JsonResponse
      */
-    public function captcha(Request $request){
+    public function captcha(Request $request, string $id){
         $ip = $this->getIp($_SERVER);
         if(!$this->ipAuthorized($ip)){
             return new JsonResponse(["message"=>"Not authorized"], 403);
@@ -48,7 +48,54 @@ class CaptchaController extends AbstractController {
                 }else{
                     return new JsonResponse(["message"=>"Set your header to application/json"], 400);
                 }
-            }else {
+            }elseif ($request->getMethod() === "GET"){
+                $repo = $this->getDoctrine()->getManager()->getRepository(Captcha::class);
+                /** @var Captcha $captcha */
+                $captcha = $repo->findOneBy(["givenId" => $id]);
+                if(!$captcha){
+                    return new JsonResponse([], 404);
+                }else{
+                    return new JsonResponse(["answer"=>$captcha->getAnswer()]);
+                }
+            }
+            else {
+                return new JsonResponse(["message"=>"Method not defined"], 400);
+            }
+        }
+    }
+
+    /**
+     * @Route("/2captcha", name="2captcha")
+     * @return JsonResponse
+     */
+    public function twocap(Request $request){
+        $ip = $this->getIp($_SERVER);
+        if(!$this->ipAuthorized($ip)){
+            return new JsonResponse(["message"=>"Not authorized"], 403);
+        }else{
+            if($request->getMethod() === "POST"){
+                if (0 === strpos($request->headers->get('Content-Type'), 'application/x-www-form-urlencoded')) {
+                    $captcha = new Captcha();
+                    try {
+                        $captcha->setGivenId($request->request->get("id"));
+                        $captcha->setAnswer($request->request->get("code"));
+                    }catch (Exception $e){
+                        return new JsonResponse(["message"=>"Field might be missing inside your body", "error"=>$e->getMessage()], 400);
+                    }
+                    $captcha->setAddedAt(new DateTime());
+                    try {
+                        $manager = $this->getDoctrine()->getManager();
+                        $manager->persist($captcha);
+                        $manager->flush();
+                        return new JsonResponse([], 201);
+                    }catch (Exception $e) {
+                        return new JsonResponse(["message"=>"Error while saving captcha object", "error"=>$e->getMessage()], 500);
+                    }
+                }else{
+                    return new JsonResponse(["message"=>"Set your header to application/json"], 400);
+                }
+            }
+            else {
                 return new JsonResponse(["message"=>"Method not defined"], 400);
             }
         }
